@@ -65,6 +65,7 @@ void usage(char *exename){
 
 }
 
+//Uses a counter and flag to count number of words in the command line argument. Uses the flag to indicate whether we are at a word or a whitespace
 int count_words(char *buff, int len, int str_len){
     //YOU MUST IMPLEMENT
     int wordCount = 0;
@@ -86,6 +87,7 @@ int count_words(char *buff, int len, int str_len){
 }
 
 //ADD OTHER HELPER FUNCTIONS HERE FOR OTHER REQUIRED PROGRAM OPTIONS
+//Uses a temp variable to reverse the string that works inward from the original string
 void reverse_string(char *buff, int len) {
     char *start = buff;
     char *end = buff + len - 1;
@@ -107,6 +109,7 @@ void reverse_string(char *buff, int len) {
     //putchar('\n');
 }
 
+//Prints a list of each word with the amount of characters that they each have and then the total number of words
 void word_print(char *buff, int len) {
     printf("Word Print\n----------\n");
     char *start = NULL;
@@ -129,7 +132,7 @@ void word_print(char *buff, int len) {
                     putchar(*(start + j));
                 }
 
-                printf(" (%d)\n", wordLength);
+                printf("(%d)\n", wordLength);
                 sideNumber++;
                 wordCount++;
                 start = NULL;
@@ -192,6 +195,7 @@ int main(int argc, char *argv[]){
         exit(2);
     }
 
+    //Handles which option user chooses
     switch (opt){
         case 'c':
             rc = count_words(buff, BUFFER_SZ, user_str_len);  //you need to implement
