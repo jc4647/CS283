@@ -102,11 +102,11 @@ void reverse_string(char *buff, int len) {
         end--;
     }
 
-    //printf("Reversed String: ");
-    //for (int i = 0; i < len; i++) {
-    //    putchar(*(buff+i));
-    //}
-    //putchar('\n');
+    printf("Reversed String: ");
+    for (int i = 0; i < len; i++) {
+        putchar(*(buff+i));
+    }
+    putchar('\n');
 }
 
 //Prints a list of each word with the amount of characters that they each have and then the total number of words
