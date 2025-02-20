@@ -224,18 +224,25 @@ int execCmd(cmd_buff_t *cmd) {
 int exec_local_cmd_loop()
 {
     char *cmd_buff = malloc(SH_CMD_MAX * sizeof(char));
+    
+    if (!cmd_buff) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return ERR_MEMORY;
+    }
+
     int rc = 0;
     cmd_buff_t cmd;
 
     if (alloc_cmd_buff(&cmd) != OK) {
         fprintf(stderr, "Failed to allocate command buffer\n");
+        free(cmd_buff);
         return ERR_MEMORY;
     }
     
     // TODO IMPLEMENT MAIN LOOP
     while (1) {
         printf("%s", SH_PROMPT);
-        if (fgets(cmd_buff, ARG_MAX, stdin) == NULL) {
+        if (fgets(cmd_buff, SH_CMD_MAX, stdin) == NULL) {
             printf("\n");
            break;
         }
@@ -252,38 +259,26 @@ int exec_local_cmd_loop()
             continue;
         }
 
-
-    // TODO IMPLEMENT parsing input to cmd_buff_t *cmd_buff
         rc = build_cmd_buff(cmd_buff, &cmd);
-        switch (rc) {
-            case WARN_NO_CMDS:
-                printf(CMD_WARN_NO_CMD);
-                continue;
-            case ERR_TOO_MANY_COMMANDS:
-                printf(CMD_ERR_PIPE_LIMIT, CMD_MAX);
-                continue;
-            case OK:
-                break;
-            default:
-                continue;
+        if (rc == WARN_NO_CMDS) {
+            printf(CMD_WARN_NO_CMD);
+            continue;
+        } else if (rc == ERR_TOO_MANY_COMMANDS) {
+            printf(CMD_ERR_PIPE_LIMIT, CMD_MAX);
+            continue;
         }
         // TODO IMPLEMENT if built-in command, execute builtin logic for exit, cd (extra credit: dragon)
         // the cd command should chdir to the provided directory; if no directory is provided, do nothing
-        Built_In_Cmds qwe = match_command(cmd.argv[0]);
-        if (qwe != BI_NOT_BI) {
-            Built_In_Cmds result = exec_built_in_cmd(&cmd);
-            if (result == BI_CMD_EXIT) {
-                free_cmd_buff(&cmd);
-                return OK_EXIT;
+        Built_In_Cmds result = exec_built_in_cmd(&cmd);
+        if (result == BI_CMD_EXIT) {
+            break;
+        } else if (result == BI_NOT_BI) {
+            if (cmd.argc > 0) {
+                execCmd(&cmd);
             }
-        } else {
-            if (cmd.argc == 0) {
-                continue;
-            }
-            execCmd(&cmd);
         }
     }
-
     free_cmd_buff(&cmd);
+    free(cmd_buff);
     return OK;
 }
