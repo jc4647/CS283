@@ -140,9 +140,12 @@ int build_cmd_buff(char *cmd_line, cmd_buff_t *cmd_buff) {
     if (cur > start) {
         cmd_buff->argv[argc++] = start;
     }
-
     cmd_buff->argc = argc;
-    return (argc == 0) ? WARN_NO_CMDS : OK;
+    if (argc == 0) {
+        return WARN_NO_CMDS;
+    } else {
+        return OK;
+    }
 }
 
 Built_In_Cmds match_command(const char *input) {
@@ -175,7 +178,6 @@ Built_In_Cmds exec_built_in_cmd(cmd_buff_t *cmd) {
             }
 
             return BI_CMD_CD;
-
         } else {
             last_rc = ERR_CMD_OR_ARGS_TOO_BIG;
             fprintf(stderr, "cd: Too many arguments\n");
