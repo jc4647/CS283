@@ -195,7 +195,7 @@ Built_In_Cmds exec_built_in_cmd(cmd_buff_t *cmd) {
     return BI_NOT_BI;
 }
 
-int execCmd(cmd_buff_t *cmd) {
+int exec_cmd(cmd_buff_t *cmd); {
     pid_t pid = fork();
     if (pid == -1) {
         perror("fork");
@@ -278,7 +278,7 @@ int exec_local_cmd_loop()
             break;
         } else if (result == BI_NOT_BI) {
             if (cmd.argc > 0) {
-                execCmd(&cmd);
+                exec_cmd(&cmd);
             }
         }
     }
