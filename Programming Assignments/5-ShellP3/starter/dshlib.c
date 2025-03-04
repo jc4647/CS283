@@ -54,33 +54,27 @@
  */
 
 
-
-int last_rc = 0;
-
 int alloc_cmd_buff(cmd_buff_t *cmd_buff) {
     cmd_buff->_cmd_buffer = malloc(SH_CMD_MAX);
-    if (!cmd_buff->_cmd_buffer) {
+    if (cmd_buff->_cmd_buffer == NULL) {
         return ERR_MEMORY;
     }
 
-    memset(cmd_buff->_cmd_buffer, 0, SH_CMD_MAX);
     cmd_buff->argc = 0;
     for (int i = 0; i < CMD_ARGV_MAX; i++) {
         cmd_buff->argv[i] = NULL;
     }
 
     return OK;
- }
+}
 
 
 int free_cmd_buff(cmd_buff_t *cmd_buff) {
-    if (cmd_buff->_cmd_buffer) {
-        free(cmd_buff->_cmd_buffer);
-        cmd_buff->_cmd_buffer = NULL;
-    }
+    free(cmd_buff->_cmd_buffer);
+    cmd_buff->_cmd_buffer = NULL;
 
     return OK;
- }
+}
 
 
 int clear_cmd_buff(cmd_buff_t *cmd_buff) {
@@ -91,64 +85,88 @@ int clear_cmd_buff(cmd_buff_t *cmd_buff) {
     }
 
     return OK;
- }
+}
 
 
 int build_cmd_buff(char *cmd_line, cmd_buff_t *cmd_buff) {
     clear_cmd_buff(cmd_buff);
+    strncpy(cmd_buff->_cmd_buffer, cmd_line, SH_CMD_MAX - 1);
+    cmd_buff->_cmd_buffer[SH_CMD_MAX - 1] = '\0';
 
     char *input = cmd_buff->_cmd_buffer;
-    strncpy(input, cmd_line, SH_CMD_MAX - 1);
-    input[SH_CMD_MAX - 1] = '\0';
-
     int argc = 0;
-    char *cur = input;
-    char *start = input;
-    int inQuotes = 0;
-    char quote = 0;
 
-    while (*cur) {
-        if (inQuotes) {
-            if (*cur == quote) {
-                inQuotes = 0;
-                *cur = '\0';
-                cmd_buff->argv[argc++] = start;
-                start = cur + 1;
+    while (*input != '\0') {
+        while (isspace((unsigned char) * input)) {
+            input++;
+        }
+        if (*input == '\0') {
+            break;
+        }
+
+        char *start;
+        if (*input == '"') { 
+            input++; 
+            start = input;
+            while (*input != '"' && *input != '\0') {
+                input++;
             }
-            cur++;
-        } else {
-            if (*cur == '"' || *cur == '\'') {
-                inQuotes = 1;
-                quote = *cur;
-                *cur = '\0';
-                if (cur > start) {
-                    cmd_buff->argv[argc++] = start;
-                }
-                start = cur + 1;
-                cur++;
-            } else if (isspace(*cur)) {
-                *cur = '\0';
-                if (cur > start) {
-                    cmd_buff->argv[argc++] = start;
-                }
-                start = cur + 1;
-                cur++;
-            } else {
-                cur++;
+            if (*input == '"') {
+                *input = '\0'; 
+                input++;      
             }
+        } else {  
+            start = input;
+            while (*input != '\0' && !isspace((unsigned char) * input)) {
+                input++;
+            }
+            if (*input != '\0') {
+                *input = '\0'; 
+                input++;
+            }
+        }
+
+        cmd_buff->argv[argc++] = start;
+
+        if (argc >= CMD_ARGV_MAX - 1) {
+            return ERR_CMD_OR_ARGS_TOO_BIG;
         }
     }
 
-    if (cur > start) {
-        cmd_buff->argv[argc++] = start;
-    }
+    cmd_buff->argv[argc] = NULL;
     cmd_buff->argc = argc;
-    if (argc == 0) {
-        return WARN_NO_CMDS;
-    } else {
-        return OK;
-    }
+
+    return OK;
 }
+
+
+
+   
+int build_cmd_list(char *cmd_line, command_list_t *clist) {
+    int count = 0;
+    int rc;
+    char *tok = strtok(cmd_line, PIPE_STRING);
+
+    while (tok != NULL) {
+        if (count == CMD_MAX) {
+            return ERR_TOO_MANY_COMMANDS;
+        }
+
+        alloc_cmd_buff(&clist->commands[count]);
+        clear_cmd_buff(&clist->commands[count]);
+        rc = build_cmd_buff(tok, &clist->commands[count]);
+        if (rc == ERR_CMD_OR_ARGS_TOO_BIG) {
+            return rc;
+        }
+
+        count++;
+        tok = strtok(NULL, PIPE_STRING);
+    }
+
+    clist->num = count;
+    return OK;
+}
+
 
 Built_In_Cmds match_command(const char *input) {
     if (strcmp(input, EXIT_CMD) == 0) {
@@ -156,133 +174,164 @@ Built_In_Cmds match_command(const char *input) {
     } else if (strcmp(input, "cd") == 0) {
         return BI_CMD_CD;
     } else if (strcmp(input, "rc") == 0) {
-        return BI_RC;
+        return BI_EXECUTED;
     } else {
         return BI_NOT_BI;
     }
 }
 
-Built_In_Cmds exec_built_in_cmd(cmd_buff_t *cmd) {
-    if (cmd->argc == 0) {
-        return BI_NOT_BI;
+Built_In_Cmds exec_built_in_cmd(cmd_buff_t *cmd, Built_In_Cmds command) {
+    switch (command) {
+        case BI_CMD_EXIT:
+            exit(OK);
+        case BI_CMD_CD:
+            if (cmd->argc > 1) {
+                if (chdir(cmd->argv[1]) != 0) {
+                    fprintf(stderr, "cd: %s: No such file or directory\n", cmd->argv[1]);
+                }
+            }
+            return BI_EXECUTED;
+        default:
+            return BI_NOT_BI;
+    }
+}
+
+int exec_cmd(cmd_buff_t *cmd) {
+    pid_t pid = fork();
+    int status;
+
+
+    if (pid == 0) {
+        execvp(cmd->argv[0], cmd->argv);
+        perror("Execvp failed");
+        exit(ERR_EXEC_CMD);
+    } else if (pid > 0) {
+        if (waitpid(pid, &status, 0) == -1) {
+            perror("Waitpid failed");
+            return ERR_EXEC_CMD;
+        }
+        if (WIFEXITED(status)) {
+            return WEXITSTATUS(status);
+        }
+        return ERR_EXEC_CMD;
+    } else {
+        perror("Fork failed");
+        return ERR_EXEC_CMD;
+    }
+}
+
+int execute_pipeline(command_list_t *clist) {
+    int numCommands = clist->num;
+    int pipes[2 * (numCommands - 1)];
+    pid_t pids[numCommands];
+
+    for (int i = 0; i < numCommands - 1; i++) {
+        if (pipe(pipes + i * 2) < 0) {
+            perror("Pipe failed");
+            return ERR_EXEC_CMD;
+        }
     }
 
-    if (strcmp(cmd->argv[0], "cd") == 0) {
-        if (cmd->argc == 1) {
-            last_rc = 0;
-            return BI_CMD_CD;
-        } else if (cmd->argc == 2) {
-            if (chdir(cmd->argv[1]) != 0) {
-                last_rc = errno;
-                perror("cd");
-            } else {
-                last_rc = 0;
+    // Create processes for each command
+    for (int i = 0; i < numCommands; i++) {
+        pids[i] = fork();
+        if (pids[i] == 0) {
+            if (i > 0) {
+                dup2(pipes[(i - 1) * 2], STDIN_FILENO);
             }
 
-            return BI_CMD_CD;
-        } else {
-            last_rc = ERR_CMD_OR_ARGS_TOO_BIG;
-            fprintf(stderr, "cd: Too many arguments\n");
-            return BI_CMD_CD;
+            if (i < numCommands - 1) {
+                dup2(pipes[i * 2 + 1], STDOUT_FILENO);
+            }
+
+            for (int j = 0; j < (numCommands - 1) * 2; j++) {
+                close(pipes[j]);
+            }
+
+            execvp(clist->commands[i].argv[0], clist->commands[i].argv);
+            perror("Execvp failed");
+            exit(ERR_EXEC_CMD);
+        } else if (pids[i] < 0) {
+            perror("Fork failed");
+            return ERR_EXEC_CMD;
         }
-    } else if (strcmp(cmd->argv[0], "exit") == 0) {
-        return BI_CMD_EXIT;
-    } else if (strcmp(cmd->argv[0], "rc") == 0) {
-        printf("%d\n", last_rc);
-        return BI_RC;
     }
 
-    return BI_NOT_BI;
-}
+    for (int i = 0; i < (numCommands - 1) * 2; i++) {
+        close(pipes[i]);
+    }
 
-int exec_cmd(cmd_buff_t *cmd); {
-    pid_t pid = fork();
-    if (pid == -1) {
-        perror("fork");
-        return ERR_EXEC_CMD;
-    } else if (pid == 0) {
-        execvp(cmd->argv[0], cmd->argv);
-        switch (errno) {
-            case ENOENT:
-                fprintf(stderr, "Command not found\n");
-                break;
-            case EACCES:
-                fprintf(stderr, "Permission denied\n");
-                break;
-            default:
-                fprintf(stderr, "Command failed");
-        }
-        exit(errno);
-    } else {
+    for (int i = 0; i < numCommands; i++) {
         int status;
-        waitpid(pid, &status, 0);
-        if (WIFEXITED(status)) {
-            last_rc = WEXITSTATUS(status);
-        } else {
-            last_rc = -1;
+        if (waitpid(pids[i], &status, 0) == -1) {
+            perror("Waitpid failed");
+            return ERR_EXEC_CMD;
+        }
+        if (WIFEXITED(status) && WEXITSTATUS(status) != OK) {
+            return WEXITSTATUS(status);
         }
     }
+
     return OK;
 }
+
+
+
 
 int exec_local_cmd_loop()
 {
     char *cmd_buff = malloc(SH_CMD_MAX * sizeof(char));
     
-    if (!cmd_buff) {
+    if (cmd_buff == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
         return ERR_MEMORY;
     }
 
-    int rc = 0;
-    cmd_buff_t cmd;
-
-    if (alloc_cmd_buff(&cmd) != OK) {
-        fprintf(stderr, "Failed to allocate command buffer\n");
-        free(cmd_buff);
-        return ERR_MEMORY;
-    }
+    int rc;
+    //cmd_buff_t cmd;
+    command_list_t list;
+    Built_In_Cmds c;
     
-    // TODO IMPLEMENT MAIN LOOP
     while (1) {
         printf("%s", SH_PROMPT);
         if (fgets(cmd_buff, SH_CMD_MAX, stdin) == NULL) {
             printf("\n");
-           break;
-        }
-
-        cmd_buff[strcspn(cmd_buff,"\n")] = '\0';
-
-
-        if (strcmp(cmd_buff, EXIT_CMD) == 0) {
             break;
         }
+
+        cmd_buff[strcspn(cmd_buff, "\n")] = '\0';
 
         if (strlen(cmd_buff) == 0) {
             printf(CMD_WARN_NO_CMD);
             continue;
         }
 
-        rc = build_cmd_buff(cmd_buff, &cmd);
-        if (rc == WARN_NO_CMDS) {
-            printf(CMD_WARN_NO_CMD);
-            continue;
-        } else if (rc == ERR_TOO_MANY_COMMANDS) {
-            printf(CMD_ERR_PIPE_LIMIT, CMD_MAX);
-            continue;
+        rc = build_cmd_list(cmd_buff, &list);
+        switch (rc) {
+            case WARN_NO_CMDS:
+                printf(CMD_WARN_NO_CMD);
+                break;
+            case ERR_TOO_MANY_COMMANDS:
+                printf(CMD_ERR_PIPE_LIMIT, CMD_MAX);
+                break;
+            case OK:
+                if (list.num == 1) {
+                    c = match_command(list.commands[0].argv[0]);
+                    if (c != BI_NOT_BI) {
+                        exec_built_in_cmd(&list.commands[0], c);
+                    } else {
+                        exec_cmd(&list.commands[0]);
+                    }
+                } else {
+                    execute_pipeline(&list);
+                }
+                break;
+            default:
+                break;
         }
-        // TODO IMPLEMENT if built-in command, execute builtin logic for exit, cd (extra credit: dragon)
-        // the cd command should chdir to the provided directory; if no directory is provided, do nothing
-        Built_In_Cmds result = exec_built_in_cmd(&cmd);
-        if (result == BI_CMD_EXIT) {
-            break;
-        } else if (result == BI_NOT_BI) {
-            if (cmd.argc > 0) {
-                exec_cmd(&cmd);
-            }
-        }
+        
     }
-    free_cmd_buff(&cmd);
+
     free(cmd_buff);
     return OK;
 }
