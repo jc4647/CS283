@@ -75,7 +75,7 @@ typedef enum {
     BI_EXECUTED,
 } Built_In_Cmds;
 Built_In_Cmds match_command(const char *input); 
-Built_In_Cmds exec_built_in_cmd(cmd_buff_t *cmd);
+Built_In_Cmds exec_built_in_cmd(cmd_buff_t *cmd, Built_In_Cmds commands);
 
 //main execution context
 int exec_local_cmd_loop();
